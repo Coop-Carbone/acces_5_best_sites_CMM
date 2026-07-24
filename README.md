@@ -109,22 +109,3 @@ pour chaque segment. Elle ne supprime pas la recherche des itinéraires
 principaux permettant de comparer le vélo, le transport collectif et le mode
 vélo + TC.
 
-### Pour l'utilisation via les API Google
-Il faut ensuite créer deux clés Google Maps Platform :
-
-- une clé serveur avec la **Routes API** activée;
-- une clé navigateur avec la **Maps JavaScript API** activée et une restriction
-  par référent HTTP adaptée à l'adresse où l'application sera ouverte.
-
-Les deux clés sont distinctes afin de pouvoir appliquer les restrictions de
-sécurité recommandées pour chaque usage.
-
-```bash
-export GOOGLE_ROUTES_API_KEY="votre-cle-serveur"
-export GOOGLE_MAPS_BROWSER_KEY="votre-cle-navigateur"
-streamlit run accessibilite_plages_montreal.py
-```
-
-Google Maps Platform peut facturer les requêtes au-delà de son crédit ou de ses
-quotas. Un calcul complet représente dix demandes d’itinéraire : cinq à vélo et
-cinq en transport collectif.
