@@ -5,13 +5,16 @@ Cette petite application compare, depuis un point de départ choisi :
 - le temps et la distance à vélo;
 - le temps en transport collectif;
 - le nombre de correspondances et la marche associée;
-- les cinq plages sur une même carte;
+- les top 5 sur une même carte;
+- les plages avec des points jaunes et les parcs avec des points verts;
 - les itinéraires à vélo, en transport collectif et en combinaison vélo + TC;
 - les étapes détaillées au clic sur une plage ou un trajet;
 - une vérification indicative des règles permettant un vélo standard dans le TC.
 
-Les cinq destinations sont celles du [palmarès de la
-CMM](https://cmm.qc.ca/nouvelles/top-5-des-plus-belles-plages-du-grand-montreal/).
+Les dix destinations proviennent des palmarès de la CMM :
+
+- [Top 5 des plus belles plages du Grand Montréal](https://cmm.qc.ca/nouvelles/top-5-des-plus-belles-plages-du-grand-montreal/);
+- [Top 5 des plus beaux parcs du Grand Montréal](https://cmm.qc.ca/nouvelles/top-5-des-plus-beaux-parcs-du-grand-montreal/).
 
 ## Installation
 

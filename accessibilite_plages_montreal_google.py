@@ -1,6 +1,6 @@
-"""Comparateur vélo / transport collectif des plages du Grand Montréal.
+"""Comparateur vélo / transport collectif de sites du Grand Montréal.
 
-L'application interroge Google Maps Directions à l'exécution afin de tenir
+L'application interroge Google Maps Routes API à l'exécution afin de tenir
 compte du point de départ et de l'heure choisis par la personne qui l'utilise.
 """
 
@@ -24,13 +24,48 @@ import streamlit.components.v1 as components
 
 MONTREAL_TZ = ZoneInfo("America/Toronto")
 
-# Les cinq lieux proviennent du palmarès de la CMM.
-PLAGES = {
-    "Plage urbaine de Verdun": "Plage urbaine de Verdun, Montréal, Québec",
-    "RécréoParc": "RécréoParc, Sainte-Catherine, Québec",
-    "Plage de l’Est": "Plage de l'Est, Pointe-aux-Trembles, Montréal, Québec",
-    "Berge aux Quatre-Vents": "Berge aux Quatre-Vents, Laval, Québec",
-    "Pointe-Valaine": "Plage de la Pointe-Valaine, Otterburn Park, Québec",
+# Coordonnées OpenStreetMap vérifiées des palmarès de la CMM.
+DESTINATIONS = {
+    "Plage urbaine de Verdun": {
+        "categorie": "Plage",
+        "coordonnees": (45.462697, -73.5601118),
+    },
+    "RécréoParc": {
+        "categorie": "Plage",
+        "coordonnees": (45.4071881, -73.6005709),
+    },
+    "Plage de l’Est": {
+        "categorie": "Plage",
+        "coordonnees": (45.6985922, -73.4814062),
+    },
+    "Berge aux Quatre-Vents": {
+        "categorie": "Plage",
+        "coordonnees": (45.5422728, -73.8799235),
+    },
+    "Pointe-Valaine": {
+        "categorie": "Plage",
+        "coordonnees": (45.5426493, -73.2198175),
+    },
+    "Domaine-Seigneurial-de-Mascouche": {
+        "categorie": "Parc",
+        "coordonnees": (45.7572759, -73.627367),
+    },
+    "Parc de conservation faunique du ruisseau de Feu": {
+        "categorie": "Parc",
+        "coordonnees": (45.7145523, -73.4944716),
+    },
+    "Parc du Centenaire de Delson": {
+        "categorie": "Parc",
+        "coordonnees": (45.3713276, -73.5385714),
+    },
+    "Parc Clémentine-De La Rousselière": {
+        "categorie": "Parc",
+        "coordonnees": (45.6678244, -73.4928249),
+    },
+    "Parc-plage Saint-Laurent": {
+        "categorie": "Parc",
+        "coordonnees": (45.7270106, -73.4567027),
+    },
 }
 
 COULEURS = {
@@ -38,9 +73,20 @@ COULEURS = {
     "Transport collectif": "#3267B1",
     "Vélo + TC": "#B14678",
 }
-COULEUR_DEPART = "#D47A2C"
+COULEURS_LIEUX = {
+    "Plage": "#E3B23C",
+    "Parc": "#2F7657",
+}
+COULEURS_TEXTE_LIEUX = {
+    "Plage": "#332500",
+    "Parc": "#FFFFFF",
+}
+COULEUR_DEPART = "#39A7E3"
 
-NUMEROS_PLAGES = {plage: numero for numero, plage in enumerate(PLAGES, start=1)}
+NUMEROS_DESTINATIONS = {
+    destination: numero
+    for numero, destination in enumerate(DESTINATIONS, start=1)
+}
 LIGNES_STM_AVEC_SUPPORT = {"34", "50", "94", "140", "146", "180", "185", "769"}
 LIGNES_RTL_VELO = {"61", "461", "462"}
 
@@ -62,6 +108,18 @@ FIELD_MASK = ",".join(
         "routes.legs.steps.transitDetails",
     ]
 )
+
+
+def destinations_pour_categorie(categorie: str) -> tuple[str, ...]:
+    """Retourne les destinations correspondant au choix de l'interface."""
+    if categorie == "Tous":
+        return tuple(DESTINATIONS)
+    categorie_singuliere = "Plage" if categorie == "Plages" else "Parc"
+    return tuple(
+        nom
+        for nom, details in DESTINATIONS.items()
+        if details["categorie"] == categorie_singuliere
+    )
 
 
 def obtenir_cle(nom: str) -> str | None:
@@ -450,6 +508,7 @@ def resumer_itineraire(
 
     return {
         "plage": plage,
+        "categorie": DESTINATIONS[plage]["categorie"],
         "mode": libelle_mode,
         "duree_min": round(duree_secondes(itineraire["duration"]) / 60),
         "distance_km": round(itineraire["distanceMeters"] / 1000, 1),
@@ -554,13 +613,14 @@ def creer_itineraire_mixte(
             if "transitDetails" in etape
         ],
         escape(
-            f"À vélo de {nom_debarquement} à la plage "
+            f"À vélo de {nom_debarquement} à {plage} "
             f"({round(duree_secondes(sortie_velo['duration']) / 60)} min)"
         ),
     ]
 
     return {
         "plage": plage,
+        "categorie": DESTINATIONS[plage]["categorie"],
         "mode": "Vélo + TC",
         "duree_min": round(duree_estimee / 60),
         "distance_km": round(
@@ -609,13 +669,15 @@ def calculer_accessibilite(
     cle_api: str,
     origine: str,
     depart_iso: str,
+    destinations: tuple[str, ...],
 ) -> tuple[list[dict], list[str]]:
     """Calcule les itinéraires et conserve le résultat pendant 30 minutes."""
     depart = datetime.fromisoformat(depart_iso)
     resultats: list[dict] = []
     avertissements: list[str] = []
 
-    for plage, destination in PLAGES.items():
+    for plage in destinations:
+        destination = DESTINATIONS[plage]["coordonnees"]
         itineraire_tc = None
         resume_tc = None
         for mode_api, libelle in (
@@ -676,10 +738,11 @@ def creer_carte_html(
 ) -> str:
     """Prépare la carte Google avec le panneau de détails unifié."""
     par_plage: list[dict] = []
-    for numero, plage in enumerate(PLAGES, start=1):
+    for plage in DESTINATIONS:
         acces = [r for r in resultats if r["plage"] == plage]
         if not acces:
             continue
+        numero = NUMEROS_DESTINATIONS[plage]
         transport = next(
             (r for r in acces if r["mode"] == "Transport collectif"), None
         )
@@ -687,6 +750,13 @@ def creer_carte_html(
             {
                 "numero": numero,
                 "nom": plage,
+                "categorie": DESTINATIONS[plage]["categorie"],
+                "couleur_point": COULEURS_LIEUX[
+                    DESTINATIONS[plage]["categorie"]
+                ],
+                "couleur_texte": COULEURS_TEXTE_LIEUX[
+                    DESTINATIONS[plage]["categorie"]
+                ],
                 "position": {
                     "lat": acces[0]["destination_coord"][0],
                     "lng": acces[0]["destination_coord"][1],
@@ -870,7 +940,7 @@ def creer_carte_html(
   .segment-etapes li {{ margin-bottom: 3px; }}
 </style>
 <div id="carte-conteneur">
-  <div id="carte" aria-label="Itinéraires vers les plages"></div>
+  <div id="carte" aria-label="Itinéraires vers les sites sélectionnés"></div>
   <section id="panneau-details" aria-live="polite" hidden></section>
 </div>
 <script>
@@ -1023,13 +1093,13 @@ def creer_carte_html(
         position: plage.position,
         label: {{
           text: String(plage.numero),
-          color: "#ffffff",
+          color: plage.couleur_texte,
           fontWeight: "bold"
         }},
         title: plage.nom,
         icon: {{
           path: google.maps.SymbolPath.CIRCLE,
-          fillColor: "#475569",
+          fillColor: plage.couleur_point,
           fillOpacity: 1,
           strokeColor: "#ffffff",
           strokeWeight: 2,
@@ -1039,7 +1109,10 @@ def creer_carte_html(
       marqueur.addListener("click", () => ouvrirPanneau(
         `<h3 class="panneau-titre">${{
           plage.numero
-        }}. ${{plage.nom}}</h3>${{contenu}}`
+        }}. ${{plage.nom}}</h3>
+        <div style="color:#475569;font-size:12px">${{
+          plage.categorie
+        }}</div>${{contenu}}`
       ));
       limites.extend(plage.position);
     }});
@@ -1107,7 +1180,7 @@ def creer_carte_html(
 def afficher_comparaison(resultats: list[dict]) -> None:
     """Affiche le graphique comparatif et un tableau de détails."""
     donnees = pd.DataFrame(resultats)
-    donnees["numero"] = donnees["plage"].map(NUMEROS_PLAGES)
+    donnees["numero"] = donnees["plage"].map(NUMEROS_DESTINATIONS)
     donnees["plage_affichage"] = donnees.apply(
         lambda ligne: f'{ligne["numero"]}. {ligne["plage"]}', axis=1
     )
@@ -1117,7 +1190,10 @@ def afficher_comparaison(resultats: list[dict]) -> None:
         .sort_values(ascending=True)
         .index.tolist()
     )
-    ordre = [f"{NUMEROS_PLAGES[plage]}. {plage}" for plage in ordre_plages]
+    ordre = [
+        f"{NUMEROS_DESTINATIONS[plage]}. {plage}"
+        for plage in ordre_plages
+    ]
 
     figure = px.bar(
         donnees,
@@ -1157,7 +1233,8 @@ def afficher_comparaison(resultats: list[dict]) -> None:
     tableau = tableau.rename(
         columns={
             "numero": "#",
-            "plage": "Plage",
+            "categorie": "Type",
+            "plage": "Lieu",
             "mode": "Mode",
             "autorisation": "Vélo dans le TC",
         }
@@ -1166,7 +1243,8 @@ def afficher_comparaison(resultats: list[dict]) -> None:
         tableau[
             [
                 "#",
-                "Plage",
+                "Type",
+                "Lieu",
                 "Mode",
                 "Durée",
                 "Distance",
@@ -1188,6 +1266,24 @@ def afficher_legende() -> None:
   display:flex; flex-wrap:wrap; align-items:center; gap:10px 22px;
   padding:5px 0 10px; color:inherit;
 ">
+  <span style="display:inline-flex;align-items:center;gap:8px">
+    <span aria-hidden="true" style="
+      display:inline-flex;width:24px;height:24px;border-radius:50%;
+      background:{COULEURS_LIEUX['Plage']};
+      border:2px solid rgba(255,255,255,.9);
+      box-shadow:0 1px 3px rgba(0,0,0,.25)
+    "></span>
+    Plage
+  </span>
+  <span style="display:inline-flex;align-items:center;gap:8px">
+    <span aria-hidden="true" style="
+      display:inline-flex;width:24px;height:24px;border-radius:50%;
+      background:{COULEURS_LIEUX['Parc']};
+      border:2px solid rgba(255,255,255,.9);
+      box-shadow:0 1px 3px rgba(0,0,0,.25)
+    "></span>
+    Parc
+  </span>
   <span style="display:inline-flex;align-items:center;gap:8px">
     <svg width="42" height="12" aria-hidden="true">
       <line x1="1" y1="6" x2="41" y2="6"
@@ -1221,7 +1317,7 @@ def afficher_legende() -> None:
     Départ
   </span>
   <span style="opacity:.72">
-    Sélectionnez une plage ou un trajet pour voir les étapes.
+    Sélectionnez un lieu ou un trajet pour voir les étapes.
   </span>
 </div>
 """,
@@ -1231,14 +1327,14 @@ def afficher_legende() -> None:
 
 def main() -> None:
     st.set_page_config(
-        page_title="Accès aux plages du Grand Montréal",
-        page_icon="🏖️",
+        page_title="Accès aux plages et parcs du Grand Montréal",
+        page_icon="🗺️",
         layout="wide",
     )
-    st.title("Les plages du Grand Montréal, sans voiture")
+    st.title("Les plages et parcs du Grand Montréal, sans voiture")
     st.caption(
         "Comparaison des temps de trajet à vélo et en transport collectif "
-        "vers les cinq plages sélectionnées par la CMM."
+        "vers les plages et les parcs sélectionnés par la CMM."
     )
 
     cle_routes = obtenir_cle("GOOGLE_ROUTES_API_KEY")
@@ -1252,25 +1348,35 @@ def main() -> None:
 
     demain = date.today() + timedelta(days=1)
     with st.form("parametres"):
-        col1, col2, col3 = st.columns([2, 1, 1])
-        origine = col1.text_input(
+        col1, col2, col3, col4 = st.columns([1.1, 2, 1, 1])
+        categorie = col1.selectbox(
+            "Lieux à comparer",
+            options=["Tous", "Parcs", "Plages"],
+            index=0,
+        )
+        origine = col2.text_input(
             "Point de départ",
             value="Gare Centrale de Montréal, Montréal, Québec",
         )
-        jour = col2.date_input("Jour du trajet", value=demain, min_value=date.today())
-        heure = col3.time_input("Heure de départ", value=time(9, 0))
+        jour = col3.date_input("Jour du trajet", value=demain, min_value=date.today())
+        heure = col4.time_input("Heure de départ", value=time(9, 0))
         lancer = st.form_submit_button("Comparer les accès", type="primary")
 
     if lancer:
         depart = datetime.combine(jour, heure, tzinfo=MONTREAL_TZ)
+        destinations_selectionnees = destinations_pour_categorie(categorie)
         with st.spinner("Calcul des itinéraires…"):
             resultats_calcules, avertissements_calcules = calculer_accessibilite(
-                cle_routes, origine.strip(), depart.isoformat()
+                cle_routes,
+                origine.strip(),
+                depart.isoformat(),
+                destinations_selectionnees,
             )
         st.session_state["resultats"] = resultats_calcules
         st.session_state["avertissements"] = avertissements_calcules
+        st.session_state["categorie"] = categorie
         st.session_state["contexte_calcul"] = (
-            f"Départ : {origine.strip()} · "
+            f"Lieux : {categorie} · Départ : {origine.strip()} · "
             f"{depart.strftime('%d/%m/%Y à %H h %M')}"
         )
 
@@ -1291,7 +1397,10 @@ def main() -> None:
         st.error("Aucun itinéraire n’a pu être calculé.")
         st.stop()
 
-    st.subheader("Carte des cinq plages et de leurs accès")
+    nombre_destinations = len({resultat["plage"] for resultat in resultats})
+    st.subheader(
+        f"Carte des {nombre_destinations} destinations et de leurs accès"
+    )
     modes_affiches = st.multiselect(
         "Itinéraires à afficher",
         options=["Vélo", "Transport collectif", "Vélo + TC"],
@@ -1323,14 +1432,20 @@ ne garantit donc pas une place.
 """
         )
 
+    st.divider()
     st.caption(
         "Les estimations dépendent des horaires et des itinéraires fournis par "
         "Google Maps au moment du calcul. Le mode vélo + TC remplace les accès "
         "à pied avant et après le TC par des segments à vélo; sa durée est une "
         "estimation. Les règles concernent un vélo standard non électrique et "
-        "la place n’est jamais garantie. Vérifiez le trajet avant de partir. "
-        "[Source des cinq plages : CMM]"
-        "(https://cmm.qc.ca/nouvelles/top-5-des-plus-belles-plages-du-grand-montreal/)."
+        "la place n’est jamais garantie. Vérifiez le trajet avant de partir."
+    )
+    st.caption(
+        "[Google Maps Platform](https://mapsplatform.google.com/) · "
+        "[Plages sélectionnées par la CMM]"
+        "(https://cmm.qc.ca/nouvelles/top-5-des-plus-belles-plages-du-grand-montreal/) · "
+        "[Parcs sélectionnés par la CMM]"
+        "(https://cmm.qc.ca/nouvelles/top-5-des-plus-beaux-parcs-du-grand-montreal/)."
     )
 
 
